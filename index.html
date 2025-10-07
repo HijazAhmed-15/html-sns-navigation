@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SNS Engineering Campus Navigation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+
+  <style>
+    body { margin:0; font-family:Arial, sans-serif; }
+    header { background:#2a7; color:white; padding:10px; text-align:center; }
+    #map { width:100%; height:calc(100vh - 160px); }
+    .controls {
+      padding:10px; display:flex; gap:8px; flex-wrap:wrap;
+      align-items:center; justify-content:center;
+      background:#f8f8f8; border-bottom:1px solid #ddd;
+    }
+    .controls select, .controls button {
+      padding:10px; font-size:15px;
+      border:1px solid #666; border-radius:5px;
+    }
+    .controls button { background:#2a7; color:white; cursor:pointer; }
+    .controls button:hover { background:#248; }
+    #routeDetails {
+      text-align:center; padding:6px; font-size:14px;
+      background:#eef; border-top:1px solid #ccc;
+    }
+    footer {
+      text-align:center; font-size:13px; padding:8px;
+      background:#2a7; color:white;
+    }
+    footer a { color:#ffeb3b; text-decoration:none; }
+    footer a:hover { text-decoration:underline; }
+    @media (max-width:600px){
+      .controls { flex-direction:column; }
+      .controls select, .controls button { width:100%; font-size:16px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h2>SNS College of Technology – Campus Navigation</h2>
+  <p style="font-size:14px; margin:4px 0;">Find buildings, routes & track your live location</p>
+</header>
+
+<div class="controls">
+  <label>Start:
+    <select id="startSelect"></select>
+  </label>
+  <label>End:
+    <select id="endSelect"></select>
+  </label>
+  <button id="routeBtn">Route</button>
+  <button id="clearBtn">Clear</button>
+  <button id="locateBtn">📍 My Location</button>
+</div>
+
+<div id="map"></div>
+<div id="routeDetails">Route details will appear here</div>
+
+<footer>
+  © 2025 SNS College of Technology | Built with <a href="https://leafletjs.com/" target="_blank">Leaflet</a> & 
+  <a href="https://www.openstreetmap.org/" target="_blank">OpenStreetMap</a>
+</footer>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+
+<script>
+  const centerLat = 11.1007, centerLng = 77.0260;
+  const map = L.map('map').setView([centerLat, centerLng], 17);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 20,
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  // Buildings
+  const buildings = [
+    { id:'gate', name:'Main Gate', coords:[11.1010, 77.0255] },
+    { id:'admin', name:'Admin Block', coords:[11.1009, 77.0262] },
+    { id:'cse', name:'CSE Department', coords:[11.1004, 77.0260] },
+    { id:'ece', name:'ECE Department', coords:[11.1003, 77.0263] },
+    { id:'library', name:'Central Library', coords:[11.1008, 77.0267] },
+    { id:'audi', name:'Auditorium', coords:[11.1007, 77.0271] },
+    { id:'hostelBoys', name:'Boys Hostel', coords:[11.1013, 77.0264] },
+    { id:'hostelGirls', name:'Girls Hostel', coords:[11.1014, 77.0268] },
+    { id:'mess', name:'Hostel Mess', coords:[11.1012, 77.0267] },
+    { id:'canteen', name:'Cafeteria', coords:[11.1006, 77.0258] },
+  ];
+
+  const startSelect = document.getElementById('startSelect');
+  const endSelect = document.getElementById('endSelect');
+
+  buildings.forEach(b => {
+    L.marker(b.coords).addTo(map).bindPopup(b.name);
+    [startSelect, endSelect].forEach(sel=>{
+      let opt=document.createElement('option');
+      opt.value=b.id; opt.text=b.name; sel.appendChild(opt);
+    });
+  });
+
+  startSelect.value = 'gate';
+  endSelect.value = 'library';
+
+  let routingControl = null;
+  let userMarker = null;
+
+  function getCoords(id){ return buildings.find(b=>b.id===id).coords; }
+
+  document.getElementById('routeBtn').addEventListener('click', ()=>{
+    const sid=startSelect.value, eid=endSelect.value;
+    if(sid===eid){ alert("Start and End cannot be the same!"); return; }
+    if(routingControl){ map.removeControl(routingControl); }
+
+    routingControl = L.Routing.control({
+      waypoints: [L.latLng(getCoords(sid)), L.latLng(getCoords(eid))],
+      router: L.Routing.osrmv1({ serviceUrl:'https://router.project-osrm.org/route/v1' }),
+      lineOptions: { addWaypoints:false },
+      addWaypoints:false,
+      show:false
+    })
+    .on('routesfound', e=>{
+      let summary = e.routes[0].summary;
+      document.getElementById("routeDetails").innerHTML =
+        `🚶 Distance: ${(summary.totalDistance/1000).toFixed(2)} km | ⏱️ Time: ${(summary.totalTime/60).toFixed(1)} mins`;
+    })
+    .addTo(map);
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', ()=>{
+    if(routingControl){ map.removeControl(routingControl); routingControl=null; }
+    document.getElementById("routeDetails").innerHTML = "Route details will appear here";
+  });
+
+  // Live location
+  document.getElementById('locateBtn').addEventListener('click', ()=>{
+    if(!navigator.geolocation){ alert("Geolocation not supported"); return; }
+    navigator.geolocation.watchPosition(pos=>{
+      let lat=pos.coords.latitude, lng=pos.coords.longitude;
+      if(userMarker){ userMarker.setLatLng([lat,lng]); }
+      else {
+        userMarker = L.marker([lat,lng], {icon: L.icon({
+          iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+          iconSize: [30,30]
+        })}).addTo(map).bindPopup("You are here");
+      }
+      map.setView([lat,lng], 18);
+    }, err=>{ alert("Location access denied"); });
+  });
+</script>
+
+</body>
+</html>
